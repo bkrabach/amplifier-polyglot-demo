@@ -8,3 +8,5 @@ Cargo.lock
 .DS_Store
 node_modules/
 __pycache__/
+html/go_wasm/
+.pytest_cache/
