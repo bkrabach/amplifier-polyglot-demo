@@ -7,6 +7,7 @@ Verifies that the build output:
 4. Has all initialization code in the boot sequence
 5. Contains no remaining placeholder comments
 """
+
 import os
 import re
 import pytest
@@ -24,6 +25,7 @@ def assembled_html():
     but also checks the file on disk.
     """
     import sys
+
     sys.path.insert(0, HTML_DIR)
     from build import assemble_html
 

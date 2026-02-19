@@ -9,10 +9,10 @@ Usage:
     python3 html/build.py              # Build with defaults
     python3 html/build.py --no-go      # Skip Go WASM (if Go not installed)
 """
+
 import base64
 import os
 import re
-import sys
 
 
 def strip_typescript_types(ts_source: str) -> str:
@@ -50,7 +50,9 @@ def strip_typescript_types(ts_source: str) -> str:
 
         # Strip variable type annotations: const x: Type = -> const x =
         # Be careful not to strip object property types in literals
-        line = re.sub(r"((?:const|let|var)\s+\w+)\s*:\s*[\w<>\[\]|&\s]+\s*=", r"\1 =", line)
+        line = re.sub(
+            r"((?:const|let|var)\s+\w+)\s*:\s*[\w<>\[\]|&\s]+\s*=", r"\1 =", line
+        )
 
         # Strip function return types: ): ReturnType { -> ) {
         line = re.sub(r"\)\s*:\s*[\w<>\[\]|&\s]+\s*\{", ") {", line)
@@ -103,11 +105,7 @@ def embed_python_as_js_string(py_source: str) -> str:
     escaped = escaped.replace("`", "\\`")
     escaped = escaped.replace("${", "\\${")
 
-    return (
-        '<script>\n'
-        f'const pyCodeAnalysisSource = `{escaped}`;\n'
-        '</script>'
-    )
+    return f"<script>\nconst pyCodeAnalysisSource = `{escaped}`;\n</script>"
 
 
 def make_inline_wasm_glue(js_glue: str) -> str:
@@ -118,7 +116,9 @@ def make_inline_wasm_glue(js_glue: str) -> str:
     """
     # Remove export keywords from function declarations
     result = re.sub(r"^export\s+function\s+", "function ", js_glue, flags=re.MULTILINE)
-    result = re.sub(r"^export\s+async\s+function\s+", "async function ", result, flags=re.MULTILINE)
+    result = re.sub(
+        r"^export\s+async\s+function\s+", "async function ", result, flags=re.MULTILINE
+    )
 
     # Remove export { ... } lines
     result = re.sub(r"^export\s*\{[^}]*\}\s*;?\s*$", "", result, flags=re.MULTILINE)
@@ -328,17 +328,24 @@ def main():
     """CLI entry point: build the assembled HTML file."""
     import argparse
 
-    parser = argparse.ArgumentParser(description="Build the Amplifier Polyglot Demo HTML")
+    parser = argparse.ArgumentParser(
+        description="Build the Amplifier Polyglot Demo HTML"
+    )
     parser.add_argument(
-        "--no-go", action="store_true",
+        "--no-go",
+        action="store_true",
         help="Skip Go WASM (if Go is not installed)",
     )
     parser.add_argument(
-        "--go-wasm-dir", type=str, default=None,
+        "--go-wasm-dir",
+        type=str,
+        default=None,
         help="Directory containing document_builder.wasm and wasm_exec.js",
     )
     parser.add_argument(
-        "--root", type=str, default=None,
+        "--root",
+        type=str,
+        default=None,
         help="Root directory of the amplifier-polyglot-demo repo",
     )
     args = parser.parse_args()
@@ -369,7 +376,7 @@ def main():
     size_kb = size_bytes / 1024
     size_mb = size_bytes / (1024 * 1024)
 
-    print(f"\n=== Build complete ===")
+    print("\n=== Build complete ===")
     print(f"Output: {out_path}")
     if size_mb >= 1:
         print(f"Size: {size_mb:.1f} MB ({size_bytes:,} bytes)")
