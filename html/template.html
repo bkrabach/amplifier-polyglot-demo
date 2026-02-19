@@ -278,7 +278,7 @@
 
             setStatus('Loading AI model (first time may take a minute)...', 70);
             // WebLLM init with progress callback
-            await initWebLLM('Phi-3.5-mini-instruct-q4f16_1-MLC', function(progress) {
+            await initWebLLM('Hermes-3-Llama-3.1-8B-q4f16_1-MLC', function(progress) {
                 const pct = 70 + (progress.progress || 0) * 30;
                 setStatus('Loading model: ' + (progress.text || ''), pct);
             });
