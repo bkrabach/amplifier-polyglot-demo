@@ -110,7 +110,7 @@ pub fn get_tool_specs() -> String {
         },
         {
             "name": "web_research",
-            "description": "Search the web and fetch URL content. Uses browser-native fetch and DOMParser.",
+            "description": "Search Wikipedia and GitHub for information. Returns article summaries and repo details.",
             "parameters": {
                 "type": "object",
                 "properties": {
