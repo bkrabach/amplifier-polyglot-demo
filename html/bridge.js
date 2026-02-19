@@ -15,11 +15,16 @@ let webllmEngine = null;
  * @returns {Promise} The initialized WebLLM engine
  */
 async function initWebLLM(modelId, onProgress) {
+    // Guard: WebGPU required
+    if (!navigator.gpu) {
+        throw new Error('WebGPU not available. Use Chrome 113+, Edge 113+, or Safari 18+.');
+    }
+
     const { CreateMLCEngine } = await import("https://esm.run/@mlc-ai/web-llm");
     webllmEngine = await CreateMLCEngine(modelId, {
-        initProgressCallback: (progress) => {
+        initProgressCallback: function(progress) {
             if (onProgress) onProgress(progress);
-        },
+        }
     });
     window.webllmEngine = webllmEngine;
     return webllmEngine;

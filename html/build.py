@@ -172,6 +172,14 @@ def assemble_html(
     # Read template
     html = _read_file(template_path)
 
+    # --- 0. Cache API polyfill (must run before any WebLLM imports) ---
+    polyfill_path = os.path.join(html_dir, "cache-polyfill.js")
+    polyfill_js = _read_file(polyfill_path)
+    html = html.replace(
+        "<!-- PLACEHOLDER: Cache API polyfill -->",
+        f"<script>\n{polyfill_js}\n</script>",
+    )
+
     # --- 1. Go WASM runtime (wasm_exec.js) ---
     if go_wasm_available and go_wasm_dir:
         wasm_exec_path = os.path.join(go_wasm_dir, "wasm_exec.js")

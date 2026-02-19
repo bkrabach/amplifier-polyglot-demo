@@ -15,6 +15,18 @@ The agent uses:
 
 Each language is chosen because it's genuinely the best fit for that capability.
 
+### Running the Demo
+
+The demo requires a local web server (WebLLM needs `http://` for WebGPU and Cache API):
+
+```bash
+cd html/
+python -m http.server 8080
+# Open http://localhost:8080/amplifier-polyglot-agent.html
+```
+
+**Note:** Opening the HTML file directly (`file://`) won't work — the Cache API and WebGPU shader caching require a secure context.
+
 ## Building
 
 ```bash

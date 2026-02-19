@@ -120,6 +120,7 @@
         <button id="send" disabled>Send</button>
     </div>
 
+    <!-- PLACEHOLDER: Cache API polyfill -->
     <!-- PLACEHOLDER: Go WASM runtime (wasm_exec.js) -->
     <!-- PLACEHOLDER: Go WASM binary (base64) -->
     <!-- PLACEHOLDER: TypeScript tools (web-research.js) -->
@@ -250,6 +251,19 @@
 
     async function boot() {
         try {
+            // Check if we're in a secure context (required for WebLLM, Cache API, WebGPU)
+            if (!window.isSecureContext) {
+                setStatus('This demo requires http:// — start a server: python -m http.server 8080', 0);
+                console.error('Not a secure context. Serve from http://localhost instead of file://');
+                // Show a helpful message in the chat area
+                addMessage('assistant',
+                    'This demo needs to be served from a web server, not opened directly as a file.\n\n' +
+                    'Quick start:\n' +
+                    '```\npython -m http.server 8080\n```\n' +
+                    'Then open: http://localhost:8080/amplifier-polyglot-agent.html'
+                );
+                return;
+            }
             setStatus('Loading Rust kernel...', 10);
             // WASM init happens here (injected by build script)
 
