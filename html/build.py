@@ -280,7 +280,7 @@ def _inject_boot_code(html: str, go_wasm_available: bool, root_dir: str) -> str:
             const rustWasmB64 = document.getElementById('rust-wasm-b64').textContent;
             const rustWasmBytes = Uint8Array.from(atob(rustWasmB64), c => c.charCodeAt(0));
             initSync(rustWasmBytes);
-            window.wasmAgent = { execute_prompt, get_tool_specs, execute_tool, kernel_version };
+            window.wasmAgent = { execute_prompt, get_tool_specs, execute_tool, kernel_version, clear_history, get_history_length };
             console.log('Rust WASM kernel loaded, version:', kernel_version());"""
 
     html = html.replace(

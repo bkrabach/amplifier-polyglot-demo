@@ -10,9 +10,19 @@
 //! - All other tools route through `amplifier_execute_tool` JS bridge
 //! - LLM calls go through `amplifier_llm_complete` JS bridge to WebLLM
 
+use std::cell::RefCell;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
+
+// ---------------------------------------------------------------------------
+// Persistent conversation state — survives across execute_prompt calls
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static MESSAGES: RefCell<Vec<Value>> = RefCell::new(Vec::new());
+}
 
 // ---------------------------------------------------------------------------
 // JavaScript imports — these functions are provided by the HTML page at runtime
@@ -164,6 +174,21 @@ pub async fn execute_tool(name: &str, input_json: &str) -> String {
     }
 }
 
+/// Clear the conversation history. Called from the UI to start a fresh conversation.
+#[wasm_bindgen]
+pub fn clear_history() {
+    MESSAGES.with(|msgs| {
+        msgs.borrow_mut().clear();
+    });
+}
+
+/// Get the number of messages in the conversation history.
+/// Exposed for testing and debugging.
+#[wasm_bindgen]
+pub fn get_history_length() -> usize {
+    MESSAGES.with(|msgs| msgs.borrow().len())
+}
+
 /// Run the full agent loop: prompt → LLM → tool calls → iterate → response.
 ///
 /// This is the main entry point called from JavaScript.
@@ -184,19 +209,20 @@ pub async fn execute_prompt(
     let tools: Vec<ToolSpec> =
         serde_json::from_str(tools_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-    let mut messages: Vec<Value> = Vec::new();
-
-    // System prompt
-    messages.push(json!({
-        "role": "system",
-        "content": "You are a helpful research assistant. You have access to tools written in four programming languages (Rust, TypeScript, Python, Go). When the user asks you to research something, analyze code, process data, or generate a document, you MUST use the appropriate tools. For simple greetings or questions that don't need tools, respond directly with plain text — do NOT attempt to call tools for simple conversation."
-    }));
-
-    // User prompt
-    messages.push(json!({
-        "role": "user",
-        "content": prompt
-    }));
+    // Add system prompt only on first call (when history is empty)
+    MESSAGES.with(|msgs| {
+        let mut messages = msgs.borrow_mut();
+        if messages.is_empty() {
+            messages.push(json!({
+                "role": "system",
+                "content": "You are a helpful research assistant. You have access to tools written in four programming languages (Rust, TypeScript, Python, Go). When the user asks you to research something, analyze code, process data, or generate a document, you MUST use the appropriate tools. For simple greetings or questions that don\u{27}t need tools, respond directly with plain text \u{2014} do NOT attempt to call tools for simple conversation."
+            }));
+        }
+        messages.push(json!({
+            "role": "user",
+            "content": prompt
+        }));
+    });
 
     for iteration in 0..max_iterations {
         js_on_event(
@@ -204,10 +230,12 @@ pub async fn execute_prompt(
             &json!({"iteration": iteration}).to_string(),
         );
 
-        // Build the LLM request
-        let request = json!({
-            "messages": messages,
-            "tools": tools,
+        // Build the LLM request with the full conversation history
+        let request = MESSAGES.with(|msgs| {
+            json!({
+                "messages": *msgs.borrow(),
+                "tools": tools,
+            })
         });
 
         // Call the LLM via JavaScript bridge
@@ -216,8 +244,10 @@ pub async fn execute_prompt(
         let response: Value = serde_json::from_str(&response_str)
             .map_err(|e| JsValue::from_str(&format!("Invalid LLM response: {e}")))?;
 
-        // Add assistant message to context
-        messages.push(response.clone());
+        // Add assistant message to persistent history
+        MESSAGES.with(|msgs| {
+            msgs.borrow_mut().push(response.clone());
+        });
 
         // Check for tool calls
         let tool_calls = response.get("tool_calls").and_then(|tc| tc.as_array());
@@ -270,12 +300,14 @@ pub async fn execute_prompt(
                     .to_string(),
                 );
 
-                // Add tool result to context
-                messages.push(json!({
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "content": result,
-                }));
+                // Add tool result to persistent history
+                MESSAGES.with(|msgs| {
+                    msgs.borrow_mut().push(json!({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": result,
+                    }));
+                });
             }
         } else {
             // No tool_calls field — return the text response
@@ -284,9 +316,10 @@ pub async fn execute_prompt(
     }
 
     // Max iterations reached
-    Ok(extract_text(
-        messages.last().unwrap_or(&Value::Null),
-    ))
+    let last_text = MESSAGES.with(|msgs| {
+        extract_text(msgs.borrow().last().unwrap_or(&Value::Null))
+    });
+    Ok(last_text)
 }
 
 // ---------------------------------------------------------------------------
@@ -361,5 +394,39 @@ mod tests {
         assert_eq!(specs[1].name, "web_research");
         assert_eq!(specs[2].name, "code_analysis");
         assert_eq!(specs[3].name, "document_builder");
+    }
+
+    #[test]
+    fn clear_history_resets_message_state() {
+        // After clearing, history should be empty
+        clear_history();
+        assert_eq!(get_history_length(), 0);
+    }
+
+    #[test]
+    fn message_history_persists_across_calls_via_thread_local() {
+        // Clear first to ensure clean state
+        clear_history();
+        assert_eq!(get_history_length(), 0);
+
+        // Simulate what execute_prompt does: add messages to the thread-local
+        MESSAGES.with(|msgs| {
+            let mut messages = msgs.borrow_mut();
+            messages.push(json!({"role": "system", "content": "You are a helper."}));
+            messages.push(json!({"role": "user", "content": "Hello"}));
+            messages.push(json!({"role": "assistant", "content": "Hi there!"}));
+        });
+        assert_eq!(get_history_length(), 3);
+
+        // Simulate a second call - messages should still be there
+        MESSAGES.with(|msgs| {
+            let mut messages = msgs.borrow_mut();
+            messages.push(json!({"role": "user", "content": "What did I say?"}));
+        });
+        assert_eq!(get_history_length(), 4);
+
+        // Clear should reset
+        clear_history();
+        assert_eq!(get_history_length(), 0);
     }
 }
