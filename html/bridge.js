@@ -2,6 +2,31 @@
 // JavaScript bridge layer — dispatches tool calls from the Rust WASM kernel
 // to the appropriate language runtime.
 
+// --- WebLLM Provider Integration ---
+
+let webllmEngine = null;
+
+/**
+ * Initialize the WebLLM engine with a given model.
+ * Called during the boot sequence to load the AI model into the browser.
+ *
+ * @param {string} modelId - The WebLLM model identifier (e.g. "Phi-3.5-mini-instruct-q4f16_1-MLC")
+ * @param {function} onProgress - Optional callback for download/init progress updates
+ * @returns {Promise} The initialized WebLLM engine
+ */
+async function initWebLLM(modelId, onProgress) {
+    const { CreateMLCEngine } = await import("https://esm.run/@mlc-ai/web-llm");
+    webllmEngine = await CreateMLCEngine(modelId, {
+        initProgressCallback: (progress) => {
+            if (onProgress) onProgress(progress);
+        },
+    });
+    window.webllmEngine = webllmEngine;
+    return webllmEngine;
+}
+
+// --- Tool Registry ---
+
 const toolRegistry = {};
 
 // Register tools from each language runtime
@@ -56,47 +81,63 @@ window.amplifier_execute_tool = async function (name, inputJson) {
 
 // The function called by the Rust WASM kernel for LLM completion
 window.amplifier_llm_complete = async function (requestJson) {
-    const request = JSON.parse(requestJson);
-    if (!window.webllmEngine) {
-        return JSON.stringify({ error: "WebLLM engine not loaded" });
+    if (!webllmEngine) {
+        return JSON.stringify({ error: "WebLLM not initialized" });
     }
 
     try {
-        const response = await window.webllmEngine.chat.completions.create({
-            messages: request.messages,
-            tools: request.tools?.map((t) => ({
-                type: "function",
-                function: {
-                    name: t.name,
-                    description: t.description,
-                    parameters: t.parameters,
-                },
-            })),
-            tool_choice: request.tools?.length ? "auto" : undefined,
-        });
+        const request = JSON.parse(requestJson);
 
-        const choice = response.choices[0];
-        const content = choice.message.content || "";
-        const tool_calls =
-            choice.message.tool_calls?.map((tc) => ({
+        // Convert messages to OpenAI-compatible format (WebLLM uses this)
+        const messages = request.messages || [];
+
+        // Convert tool specs to OpenAI tool format
+        const tools = (request.tools || []).map((t) => ({
+            type: "function",
+            function: {
+                name: t.name,
+                description: t.description,
+                parameters:
+                    typeof t.parameters === "string"
+                        ? JSON.parse(t.parameters)
+                        : t.parameters,
+            },
+        }));
+
+        const params = {
+            messages: messages,
+            temperature: request.temperature || 0.7,
+            max_tokens: request.max_tokens || 4096,
+        };
+
+        // Only include tools if we have them
+        if (tools.length > 0) {
+            params.tools = tools;
+            params.tool_choice = "auto";
+        }
+
+        const completion = await webllmEngine.chat.completions.create(params);
+
+        // Convert to the format the Rust kernel expects
+        const choice = completion.choices[0];
+        const response = {
+            role: "assistant",
+            content: choice.message.content || "",
+            tool_calls: (choice.message.tool_calls || []).map((tc) => ({
                 id: tc.id,
                 name: tc.function.name,
                 arguments: JSON.parse(tc.function.arguments || "{}"),
-            })) || [];
+            })),
+        };
 
-        return JSON.stringify({
-            content: content,
-            tool_calls: tool_calls,
-            usage: response.usage
-                ? {
-                      input_tokens: response.usage.prompt_tokens,
-                      output_tokens: response.usage.completion_tokens,
-                      total_tokens: response.usage.total_tokens,
-                  }
-                : null,
-        });
+        return JSON.stringify(response);
     } catch (e) {
-        return JSON.stringify({ error: e.message || String(e) });
+        console.error("WebLLM error:", e);
+        return JSON.stringify({
+            role: "assistant",
+            content: `Error: ${e.message}`,
+            tool_calls: [],
+        });
     }
 };
 

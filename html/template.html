@@ -1,1 +1,283 @@
-<!-- Placeholder for Milestone 7 — Browser demo UI -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amplifier Polyglot Agent</title>
+    <style>
+        /* Dark theme, clean design */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            padding: 16px 24px; background: #16213e; border-bottom: 1px solid #2a2a4a;
+            display: flex; align-items: center; gap: 16px;
+        }
+        .header h1 { font-size: 18px; color: #fff; }
+        .header .subtitle { font-size: 13px; color: #888; }
+        .language-badges { display: flex; gap: 6px; margin-left: auto; }
+        .badge { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge.rust { background: #b7410e22; color: #e67e22; border: 1px solid #e67e2244; }
+        .badge.ts { background: #3178c622; color: #3178c6; border: 1px solid #3178c644; }
+        .badge.python { background: #3776ab22; color: #4b8bbe; border: 1px solid #4b8bbe44; }
+        .badge.go { background: #00add822; color: #00add8; border: 1px solid #00add844; }
+
+        /* Messages area */
+        .messages { flex: 1; overflow-y: auto; padding: 24px; }
+        .message { margin-bottom: 16px; max-width: 80%; }
+        .message.user { margin-left: auto; }
+        .message.assistant { margin-right: auto; }
+        .message .bubble {
+            padding: 12px 16px; border-radius: 12px; line-height: 1.5;
+        }
+        .message.user .bubble { background: #2d3748; }
+        .message.assistant .bubble { background: #1e293b; border: 1px solid #2a2a4a; }
+
+        /* Tool calls */
+        .tool-call {
+            margin: 8px 0; padding: 8px 12px; border-radius: 8px;
+            background: #0f172a; border-left: 3px solid #666; font-size: 13px;
+        }
+        .tool-call .tool-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .tool-call .tool-name { font-weight: 600; }
+        .tool-call .tool-output { color: #888; font-size: 12px; max-height: 100px; overflow-y: auto; }
+        .tool-call.rust { border-left-color: #e67e22; }
+        .tool-call.typescript { border-left-color: #3178c6; }
+        .tool-call.python { border-left-color: #4b8bbe; }
+        .tool-call.go { border-left-color: #00add8; }
+
+        /* Progress / status */
+        .status-bar {
+            padding: 8px 24px; background: #0f172a; border-top: 1px solid #2a2a4a;
+            font-size: 12px; color: #666; display: flex; align-items: center; gap: 8px;
+        }
+        .status-bar .progress { flex: 1; height: 3px; background: #2a2a4a; border-radius: 2px; }
+        .status-bar .progress-fill { height: 100%; background: #4ade80; border-radius: 2px; transition: width 0.3s; }
+
+        /* Input area */
+        .input-area {
+            padding: 16px 24px; background: #16213e; border-top: 1px solid #2a2a4a;
+            display: flex; gap: 12px;
+        }
+        .input-area input {
+            flex: 1; padding: 10px 16px; border-radius: 8px; border: 1px solid #2a2a4a;
+            background: #1a1a2e; color: #e0e0e0; font-size: 14px; outline: none;
+        }
+        .input-area input:focus { border-color: #4ade80; }
+        .input-area button {
+            padding: 10px 20px; border-radius: 8px; border: none;
+            background: #4ade80; color: #000; font-weight: 600; cursor: pointer;
+        }
+        .input-area button:disabled { background: #2a2a4a; color: #666; cursor: not-allowed; }
+
+        /* Markdown rendering */
+        .bubble h1, .bubble h2, .bubble h3 { margin: 8px 0 4px; }
+        .bubble h1 { font-size: 18px; } .bubble h2 { font-size: 16px; } .bubble h3 { font-size: 14px; }
+        .bubble pre { background: #0f172a; padding: 8px; border-radius: 4px; overflow-x: auto; margin: 8px 0; }
+        .bubble code { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 13px; }
+        .bubble table { border-collapse: collapse; margin: 8px 0; width: 100%; }
+        .bubble th, .bubble td { border: 1px solid #2a2a4a; padding: 4px 8px; text-align: left; }
+        .bubble th { background: #1e293b; }
+        .bubble ul, .bubble ol { padding-left: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Amplifier Polyglot Agent</h1>
+        <span class="subtitle">4 languages, 4 tools, runs in your browser</span>
+        <div class="language-badges">
+            <span class="badge rust">Rust</span>
+            <span class="badge ts">TypeScript</span>
+            <span class="badge python">Python</span>
+            <span class="badge go">Go</span>
+        </div>
+    </div>
+
+    <div class="messages" id="messages">
+        <div class="message assistant">
+            <div class="bubble">
+                Welcome! I'm an AI agent with tools in four programming languages.<br><br>
+                <b>Rust</b> — data transformation and statistics<br>
+                <b>TypeScript</b> — web search and page fetching<br>
+                <b>Python</b> — code analysis (ast module)<br>
+                <b>Go</b> — document generation and formatting<br><br>
+                Try: "Research the Amplifier AI framework and give me a report"
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar" id="status">
+        <span id="status-text">Loading...</span>
+        <div class="progress"><div class="progress-fill" id="progress" style="width: 0%"></div></div>
+    </div>
+
+    <div class="input-area">
+        <input type="text" id="input" placeholder="Type your message..." disabled>
+        <button id="send" disabled>Send</button>
+    </div>
+
+    <!-- PLACEHOLDER: Go WASM runtime (wasm_exec.js) -->
+    <!-- PLACEHOLDER: Go WASM binary (base64) -->
+    <!-- PLACEHOLDER: TypeScript tools (web-research.js) -->
+    <!-- PLACEHOLDER: Python code_analysis.py (as string for Pyodide) -->
+    <!-- PLACEHOLDER: JavaScript bridge (bridge.js) -->
+    <!-- PLACEHOLDER: Rust WASM binary (base64 from wasm-pack) -->
+
+    <script>
+    // =========================================================================
+    // Boot sequence and chat UI logic
+    // =========================================================================
+
+    const statusEl = document.getElementById('status-text');
+    const progressEl = document.getElementById('progress');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('send');
+    const messagesEl = document.getElementById('messages');
+
+    // --- Status / progress helpers ---
+
+    function setStatus(text, pct) {
+        statusEl.textContent = text;
+        progressEl.style.width = pct + '%';
+    }
+
+    // --- Chat message rendering ---
+
+    function addMessage(role, content, toolCalls) {
+        const div = document.createElement('div');
+        div.className = `message ${role}`;
+
+        let html = '<div class="bubble">';
+        if (content) {
+            // Simple markdown rendering
+            html += renderMarkdown(content);
+        }
+        if (toolCalls && toolCalls.length > 0) {
+            for (const tc of toolCalls) {
+                const lang = getToolLanguage(tc.name);
+                html += `<div class="tool-call ${lang}">
+                    <div class="tool-header">
+                        <span class="badge ${lang}">${lang}</span>
+                        <span class="tool-name">${tc.name}</span>
+                    </div>
+                    <div class="tool-output">${tc.output || 'Executing...'}</div>
+                </div>`;
+            }
+        }
+        html += '</div>';
+        div.innerHTML = html;
+        messagesEl.appendChild(div);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    // --- Tool language mapping ---
+
+    function getToolLanguage(name) {
+        const map = {
+            'data_transform': 'rust',
+            'web_research': 'typescript',
+            'code_analysis': 'python',
+            'document_builder': 'go'
+        };
+        return map[name] || 'unknown';
+    }
+
+    // --- Markdown rendering ---
+
+    function renderMarkdown(text) {
+        // Basic markdown rendering for chat bubbles
+        return text
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+            .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+            .replace(/\*(.+?)\*/g, '<i>$1</i>')
+            .replace(/`(.+?)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>');
+    }
+
+    // --- Event handler for tool execution visualization ---
+
+    window.onAmplifierEvent = function(eventType, data) {
+        if (eventType === 'tool:execute') {
+            const lang = getToolLanguage(data.tool);
+            setStatus(`Executing ${data.tool} (${lang})...`, 50);
+        } else if (eventType === 'iteration:start') {
+            setStatus(`Thinking (iteration ${data.iteration + 1})...`, 30);
+        }
+    };
+
+    // --- Send message handler ---
+
+    async function sendMessage() {
+        const prompt = inputEl.value.trim();
+        if (!prompt) return;
+
+        inputEl.value = '';
+        inputEl.disabled = true;
+        sendBtn.disabled = true;
+
+        addMessage('user', prompt);
+        setStatus('Thinking...', 20);
+
+        try {
+            // Call the Rust WASM kernel
+            const toolSpecs = window.wasmAgent.get_tool_specs();
+            const response = await window.wasmAgent.execute_prompt(prompt, toolSpecs, 10);
+            addMessage('assistant', response);
+            setStatus('Ready', 100);
+        } catch (e) {
+            addMessage('assistant', `Error: ${e.message || e}`);
+            setStatus('Error occurred', 0);
+        }
+
+        inputEl.disabled = false;
+        sendBtn.disabled = false;
+        inputEl.focus();
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    inputEl.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    // --- Boot sequence ---
+    // Loads all runtimes in order: Rust WASM -> Go WASM -> TS tools -> Pyodide -> WebLLM
+
+    async function boot() {
+        try {
+            setStatus('Loading Rust kernel...', 10);
+            // WASM init happens here (injected by build script)
+
+            setStatus('Loading Go document builder...', 25);
+            // Go WASM init happens here (injected by build script)
+
+            setStatus('Loading TypeScript tools...', 40);
+            // TS tools already loaded (inline script)
+
+            setStatus('Loading Python analyzer (Pyodide from CDN)...', 50);
+            // Pyodide loading happens here (injected by build script)
+
+            setStatus('Loading AI model (first time may take a minute)...', 70);
+            // WebLLM init with progress callback
+            await initWebLLM('Phi-3.5-mini-instruct-q4f16_1-MLC', function(progress) {
+                const pct = 70 + (progress.progress || 0) * 30;
+                setStatus('Loading model: ' + (progress.text || ''), pct);
+            });
+
+            setStatus('Ready! Type a message to start.', 100);
+            inputEl.disabled = false;
+            sendBtn.disabled = false;
+            inputEl.focus();
+        } catch (e) {
+            setStatus('Boot failed: ' + e.message, 0);
+            console.error('Boot error:', e);
+        }
+    }
+    </script>
+</body>
+</html>
