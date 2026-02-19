@@ -1,0 +1,10 @@
+/target
+/pkg
+/html/pkg
+**/*.wasm
+Cargo.lock
+*.swp
+*.swo
+.DS_Store
+node_modules/
+__pycache__/
