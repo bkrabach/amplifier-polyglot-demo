@@ -130,10 +130,10 @@ class TestBootSequence:
         assert "initWebLLM" in template_html, \
             "Boot must call initWebLLM to load the AI model"
 
-    def test_boot_uses_phi_model(self, template_html):
-        """Boot must load the Phi-3.5-mini model by default."""
-        assert "Phi-3.5-mini-instruct" in template_html or "Phi-3" in template_html, \
-            "Boot must use the Phi-3.5-mini model"
+    def test_boot_uses_qwen3_model(self, template_html):
+        """Boot must load the Qwen3-4B model."""
+        assert "Qwen3-4B" in template_html, \
+            "Boot must use the Qwen3-4B model"
 
     def test_has_set_status_function(self, template_html):
         """Must have a setStatus function for progress updates."""
