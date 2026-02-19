@@ -1,0 +1,26 @@
+# docker-compose.yml — Polyglot gRPC tool services
+#
+# Start:  docker compose up -d
+# Test:   python3 server/test_polyglot.py
+# Stop:   docker compose down
+#
+# Services:
+#   go-document-builder   :50052  — Go document_builder tool
+#   python-code-analysis  :50053  — Python code_analysis tool
+
+services:
+  go-document-builder:
+    build:
+      context: /home/bkrabach/dev/amplifier-module-tool-document-builder-go
+      dockerfile: Dockerfile
+    ports:
+      - "50052:50052"
+    command: ["document-builder", "--port", "50052"]
+
+  python-code-analysis:
+    build:
+      context: .
+      dockerfile: server/python-tool/Dockerfile
+    ports:
+      - "50053:50053"
+    command: ["python", "server.py"]
