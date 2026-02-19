@@ -94,7 +94,16 @@ window.amplifier_llm_complete = async function (requestJson) {
         const request = JSON.parse(requestJson);
 
         // Convert messages to OpenAI-compatible format (WebLLM uses this)
-        const messages = request.messages || [];
+        var messages = request.messages || [];
+        
+        // WebLLM's Hermes-2-Pro function calling mode manages its own system prompt.
+        // When tools are present, strip our custom system message to avoid
+        // CustomSystemPromptError. The conversation history (user/assistant/tool
+        // messages) is preserved.
+        var hasTools = (request.tools || []).length > 0;
+        if (hasTools) {
+            messages = messages.filter(function(m) { return m.role !== "system"; });
+        }
 
         // Convert tool specs to OpenAI tool format
         const tools = (request.tools || []).map((t) => ({
