@@ -252,9 +252,9 @@
     async function boot() {
         try {
             // Check if we're in a secure context (required for WebLLM, Cache API, WebGPU)
-            if (!window.isSecureContext) {
-                setStatus('This demo requires http:// — start a server: python -m http.server 8080', 0);
-                console.error('Not a secure context. Serve from http://localhost instead of file://');
+            if (window.location.protocol === "file:") {
+                setStatus('Opened from file:// — start a server: python -m http.server 8081', 0);
+                console.error('Opened from file:// — please serve from http:// instead');
                 // Show a helpful message in the chat area
                 addMessage('assistant',
                     'This demo needs to be served from a web server, not opened directly as a file.\n\n' +
