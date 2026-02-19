@@ -133,6 +133,24 @@ window.amplifier_llm_complete = async function (requestJson) {
     try {
         var request = JSON.parse(requestJson);
         var messages = request.messages || [];
+        
+        // Convert messages for WebLLM compatibility:
+        // - 'tool' role → 'user' role with "[Tool result from X]" prefix
+        // - assistant messages with tool_calls → plain assistant with text about the call
+        messages = messages.map(function(m) {
+            if (m.role === "tool") {
+                var toolName = m.tool_call_id || "unknown";
+                var content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+                return { role: "user", content: "[Tool result from " + toolName + "]: " + content };
+            }
+            if (m.role === "assistant" && m.tool_calls && m.tool_calls.length > 0) {
+                var callDescs = m.tool_calls.map(function(tc) {
+                    return "Called " + tc.name + " with " + JSON.stringify(tc.arguments);
+                }).join("; ");
+                return { role: "assistant", content: callDescs };
+            }
+            return { role: m.role, content: typeof m.content === "string" ? m.content : JSON.stringify(m.content || "") };
+        });
         var tools = request.tools || [];
 
         // Build tool descriptions for the system prompt
