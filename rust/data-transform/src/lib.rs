@@ -39,7 +39,14 @@ fn compute_stats(input: &Value) -> Result<Value, String> {
 
     let values: Vec<f64> = data
         .iter()
-        .filter_map(|item| item.get(field).and_then(|v| v.as_f64()))
+        .filter_map(|item| {
+            // Handle plain numbers: [10, 20, 30]
+            if let Some(n) = item.as_f64() {
+                return Some(n);
+            }
+            // Handle objects with a field: [{"value": 10}, {"score": 20}]
+            item.get(field).and_then(|v| v.as_f64())
+        })
         .collect();
 
     if values.is_empty() {
@@ -209,7 +216,14 @@ fn aggregate_data(input: &Value) -> Result<Value, String> {
 
     let values: Vec<f64> = data
         .iter()
-        .filter_map(|item| item.get(field).and_then(|v| v.as_f64()))
+        .filter_map(|item| {
+            // Handle plain numbers: [10, 20, 30]
+            if let Some(n) = item.as_f64() {
+                return Some(n);
+            }
+            // Handle objects with a field: [{"value": 10}, {"score": 20}]
+            item.get(field).and_then(|v| v.as_f64())
+        })
         .collect();
 
     let mut result = serde_json::Map::new();
@@ -345,4 +359,19 @@ mod tests {
         let result = execute(&json!({"operation": "unknown_op"}));
         assert!(result.is_err());
     }
+
+    #[test]
+    fn stats_plain_number_array() {
+        let input = json!({
+            "operation": "stats",
+            "data": [10, 20, 30, 40, 50]
+        });
+        let result = execute(&input).unwrap();
+        assert_eq!(result["count"], 5);
+        assert_eq!(result["sum"], 150.0);
+        assert_eq!(result["mean"], 30.0);
+        assert_eq!(result["min"], 10.0);
+        assert_eq!(result["max"], 50.0);
+    }
+
 }
