@@ -137,10 +137,22 @@ window.amplifier_llm_complete = async function (requestJson) {
 
         return JSON.stringify(response);
     } catch (e) {
+        // Handle ToolCallOutputParseError — model responded with plain text
+        // instead of a tool call JSON. Extract the text and return it.
+        if (e.message && e.message.includes("parsing outputMessage for function calling")) {
+            var match = e.message.match(/Got outputMessage: ([\s\S]*?)(?:Got error:|$)/);
+            var text = match ? match[1].trim() : String(e);
+            console.warn("WebLLM: model responded with text instead of tool call, returning as content");
+            return JSON.stringify({
+                role: "assistant",
+                content: text,
+                tool_calls: [],
+            });
+        }
         console.error("WebLLM error:", e);
         return JSON.stringify({
             role: "assistant",
-            content: `Error: ${e.message}`,
+            content: "Error: " + e.message,
             tool_calls: [],
         });
     }

@@ -189,7 +189,7 @@ pub async fn execute_prompt(
     // System prompt
     messages.push(json!({
         "role": "system",
-        "content": "You are a research assistant with tools in four programming languages. Use the available tools to help the user."
+        "content": "You are a helpful research assistant. You have access to tools written in four programming languages (Rust, TypeScript, Python, Go). When the user asks you to research something, analyze code, process data, or generate a document, you MUST use the appropriate tools. For simple greetings or questions that don't need tools, respond directly with plain text — do NOT attempt to call tools for simple conversation."
     }));
 
     // User prompt
