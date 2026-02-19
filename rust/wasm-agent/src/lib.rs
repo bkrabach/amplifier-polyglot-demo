@@ -79,6 +79,49 @@ pub fn extract_text(message: &Value) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Tool failure tracking — prevents agent loop from retrying the same failing tool
+// ---------------------------------------------------------------------------
+
+/// Tracks consecutive failures per tool to break retry loops.
+///
+/// When a tool fails `max_failures` times in a row, the tracker signals
+/// that it should be skipped, and a system message is injected telling the
+/// LLM to use a different approach.
+pub struct ToolFailureTracker {
+    failures: std::collections::HashMap<String, u32>,
+    max_failures: u32,
+}
+
+impl ToolFailureTracker {
+    pub fn new(max_failures: u32) -> Self {
+        Self {
+            failures: std::collections::HashMap::new(),
+            max_failures,
+        }
+    }
+
+    /// Returns true if this tool has failed too many times and should be skipped.
+    pub fn should_skip(&self, tool_name: &str) -> bool {
+        self.failures.get(tool_name).copied().unwrap_or(0) >= self.max_failures
+    }
+
+    /// Record a failure for the given tool.
+    pub fn record_failure(&mut self, tool_name: &str) {
+        *self.failures.entry(tool_name.to_string()).or_insert(0) += 1;
+    }
+
+    /// Record a success — resets the failure counter for this tool.
+    pub fn record_success(&mut self, tool_name: &str) {
+        self.failures.remove(tool_name);
+    }
+
+    /// Get the current failure count for a tool.
+    pub fn failure_count(&self, tool_name: &str) -> u32 {
+        self.failures.get(tool_name).copied().unwrap_or(0)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // WASM-exported functions
 // ---------------------------------------------------------------------------
 
@@ -224,6 +267,8 @@ pub async fn execute_prompt(
         }));
     });
 
+    let mut tool_failures = ToolFailureTracker::new(2);
+
     for iteration in 0..max_iterations {
         js_on_event(
             "iteration:start",
@@ -263,6 +308,21 @@ pub async fn execute_prompt(
                 let tool_args = call.get("arguments").unwrap_or(&Value::Null);
                 let call_id = call.get("id").and_then(|id| id.as_str()).unwrap_or("");
 
+                // Check if this tool has failed too many times in a row
+                if tool_failures.should_skip(tool_name) {
+                    let failures = tool_failures.failure_count(tool_name);
+                    MESSAGES.with(|msgs| {
+                        msgs.borrow_mut().push(json!({
+                            "role": "user",
+                            "content": format!(
+                                "[System: Tool '{}' has failed {} times. Please use a different tool or respond with text.]",
+                                tool_name, failures
+                            )
+                        }));
+                    });
+                    continue;
+                }
+
                 js_on_event(
                     "tool:execute",
                     &json!({
@@ -290,6 +350,13 @@ pub async fn execute_prompt(
                     let result_js = js_execute_tool(tool_name, &input_str).await;
                     result_js.as_string().unwrap_or_else(|| "{}".to_string())
                 };
+
+                // Track failures: if result indicates failure, increment counter
+                if result.contains("\"success\":false") || result.contains("\"error\"") {
+                    tool_failures.record_failure(tool_name);
+                } else {
+                    tool_failures.record_success(tool_name);
+                }
 
                 js_on_event(
                     "tool:result",
@@ -428,5 +495,62 @@ mod tests {
         // Clear should reset
         clear_history();
         assert_eq!(get_history_length(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests for ToolFailureTracker — prevents agent loop from retrying
+    // the same failing tool indefinitely
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn tracker_allows_first_call() {
+        let tracker = ToolFailureTracker::new(2);
+        assert!(!tracker.should_skip("code_analysis"));
+    }
+
+    #[test]
+    fn tracker_allows_after_one_failure() {
+        let mut tracker = ToolFailureTracker::new(2);
+        tracker.record_failure("code_analysis");
+        assert!(!tracker.should_skip("code_analysis"));
+    }
+
+    #[test]
+    fn tracker_skips_after_max_failures() {
+        let mut tracker = ToolFailureTracker::new(2);
+        tracker.record_failure("code_analysis");
+        tracker.record_failure("code_analysis");
+        assert!(tracker.should_skip("code_analysis"));
+    }
+
+    #[test]
+    fn tracker_resets_on_success() {
+        let mut tracker = ToolFailureTracker::new(2);
+        tracker.record_failure("code_analysis");
+        tracker.record_failure("code_analysis");
+        assert!(tracker.should_skip("code_analysis"));
+
+        tracker.record_success("code_analysis");
+        assert!(!tracker.should_skip("code_analysis"));
+    }
+
+    #[test]
+    fn tracker_tracks_tools_independently() {
+        let mut tracker = ToolFailureTracker::new(2);
+        tracker.record_failure("code_analysis");
+        tracker.record_failure("code_analysis");
+        // code_analysis is blocked, but web_research is fine
+        assert!(tracker.should_skip("code_analysis"));
+        assert!(!tracker.should_skip("web_research"));
+    }
+
+    #[test]
+    fn tracker_failure_count_reports_correctly() {
+        let mut tracker = ToolFailureTracker::new(2);
+        assert_eq!(tracker.failure_count("code_analysis"), 0);
+        tracker.record_failure("code_analysis");
+        assert_eq!(tracker.failure_count("code_analysis"), 1);
+        tracker.record_failure("code_analysis");
+        assert_eq!(tracker.failure_count("code_analysis"), 2);
     }
 }

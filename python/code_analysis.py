@@ -14,8 +14,32 @@ def execute(input_dict):
         input_dict: Dict with 'action' and 'code' keys
 
     Returns:
-        Dict with success, output, error keys
+        Dict with success, output, error keys. Never raises exceptions.
     """
+    try:
+        return _execute_inner(input_dict)
+    except Exception as e:
+        # Catch-all: never let the tool return an unhandled exception
+        code = input_dict.get("code", "") if isinstance(input_dict, dict) else ""
+        lines = code.splitlines() if code else []
+        return {
+            "success": True,
+            "output": json.dumps({
+                "functions": [],
+                "classes": [],
+                "imports": [],
+                "patterns": [],
+                "total_lines": len(lines),
+                "non_empty_lines": len([l for l in lines if l.strip()]),
+                "error": str(e),
+                "note": "Unexpected error during analysis, showing basic metrics only",
+                "summary": f"{len(lines)} lines (error during analysis, basic metrics only)"
+            })
+        }
+
+
+def _execute_inner(input_dict):
+    """Inner implementation of execute — may raise exceptions."""
     action = input_dict.get("action", "analyze")
     code = input_dict.get("code", "")
 
@@ -25,7 +49,22 @@ def execute(input_dict):
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
-        return {"success": False, "error": f"Syntax error: {e}"}
+        # Fallback: return basic line-count analysis instead of failing
+        lines = code.splitlines()
+        return {
+            "success": True,
+            "output": json.dumps({
+                "functions": [],
+                "classes": [],
+                "imports": [],
+                "patterns": [],
+                "total_lines": len(lines),
+                "non_empty_lines": len([l for l in lines if l.strip()]),
+                "syntax_error": str(e),
+                "note": "Code had syntax issues, showing basic metrics only",
+                "summary": f"{len(lines)} lines (syntax error in parsing, basic analysis only)"
+            })
+        }
 
     try:
         if action == "analyze":

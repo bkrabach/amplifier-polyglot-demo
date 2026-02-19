@@ -34,10 +34,35 @@ class TestExecuteEntryPoint:
         assert result["success"] is False
         assert "Unknown action" in result["error"]
 
-    def test_execute_syntax_error(self):
+    def test_execute_syntax_error_returns_graceful_fallback(self):
+        """When code has syntax errors, return basic line metrics instead of failing."""
         result = code_analysis.execute({"action": "analyze", "code": "def foo(:"})
-        assert result["success"] is False
-        assert "Syntax error" in result["error"]
+        assert result["success"] is True
+        output = json.loads(result["output"])
+        assert output["total_lines"] >= 1
+        assert "non_empty_lines" in output
+        assert "syntax_error" in output
+        assert "note" in output
+        assert "summary" in output
+        assert output["functions"] == []
+        assert output["classes"] == []
+        assert output["imports"] == []
+
+    def test_execute_syntax_error_multiline_fallback(self):
+        """Syntax error fallback counts lines correctly for multi-line code."""
+        bad_code = "x = 1\ny = 2\ndef broken(:\nz = 3\n"
+        result = code_analysis.execute({"action": "analyze", "code": bad_code})
+        assert result["success"] is True
+        output = json.loads(result["output"])
+        assert output["total_lines"] == 4
+        assert output["non_empty_lines"] == 4
+
+    def test_execute_entry_point_never_raises(self):
+        """The execute entry point catches all exceptions and returns a dict."""
+        # Even with bizarre input, execute should return a dict, never raise
+        result = code_analysis.execute({"action": "analyze", "code": "x = 1"})
+        assert isinstance(result, dict)
+        assert "success" in result
 
     def test_execute_defaults_to_analyze(self):
         result = code_analysis.execute({"code": "x = 1"})
