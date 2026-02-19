@@ -252,17 +252,17 @@ def assemble_html(
 
     # --- 7. Inject boot sequence initialization code ---
     # Replace placeholder comments in the boot() function with actual init code
-    html = _inject_boot_code(html, go_wasm_available)
+    html = _inject_boot_code(html, go_wasm_available, root_dir)
 
     return html
 
 
-def _inject_boot_code(html: str, go_wasm_available: bool) -> str:
+def _inject_boot_code(html: str, go_wasm_available: bool, root_dir: str) -> str:
     """Inject actual initialization code into the boot() function.
 
     Replaces the placeholder comments in boot() with real code that:
     - Decodes base64 Rust WASM and initializes via initSync
-    - Optionally decodes and runs Go WASM
+    - Registers Go JS fallback FIRST, then attempts Go WASM (with try-catch)
     - Loads Pyodide from CDN and runs the Python code
     - Sets up window.wasmAgent
     """
@@ -280,21 +280,99 @@ def _inject_boot_code(html: str, go_wasm_available: bool) -> str:
         rust_init,
     )
 
-    # Go WASM init
-    if go_wasm_available:
-        go_init = """
-            // Decode and initialize Go WASM document builder
-            const goWasmB64 = document.getElementById('go-wasm-b64').textContent;
-            const goWasmBytes = Uint8Array.from(atob(goWasmB64), c => c.charCodeAt(0));
-            const go = new Go();
-            const goResult = await WebAssembly.instantiate(goWasmBytes, go.importObject);
-            go.run(goResult.instance);
-            console.log('Go WASM document builder loaded');"""
+    # Go WASM init — register JS fallback FIRST, then attempt native WASM.
+    # Go 1.24 has a syscall/fs_js.go regression that panics inside
+    # WebAssembly.instantiate(), which JavaScript cannot catch.  By
+    # registering the fallback before the attempt, goDocumentBuilder is
+    # always available regardless of whether native Go WASM loads.
+    go_fallback_path = os.path.join(root_dir, "html", "go_fallback.js")
+    if os.path.exists(go_fallback_path):
+        go_fallback_js = _read_file(go_fallback_path)
     else:
-        go_init = """
-            // Go WASM not available — skipping document_builder
-            window.goWasmReady = false;
-            console.warn('Go WASM not included — document_builder tool disabled');"""
+        go_fallback_js = (
+            "window.goDocumentBuilder = function(inputJson) {\n"
+            "    return JSON.stringify({success: false, error: 'Go fallback not available'});\n"
+            "};\n"
+            "window.goWasmReady = true;"
+        )
+
+    # Indent each line of the fallback to match boot() function scope
+    indented_fallback = "\n".join(
+        "            " + ln for ln in go_fallback_js.split("\n")
+    )
+
+    if go_wasm_available:
+        go_init = (
+            "\n"
+            "            // Register JS fallback for document_builder FIRST\n"
+            "            // (Go WASM may fail due to Go 1.24 syscall/fs_js regression)\n"
+            + indented_fallback + "\n"
+            "            console.log('JavaScript document_builder fallback registered');\n"
+            "\n"
+            "            try {\n"
+            "            // Ensure process/fs stubs exist before Go WASM init\n"
+            "            if (!globalThis.process) {\n"
+            "                globalThis.process = {\n"
+            "                    pid: 1, ppid: 0, umask() { return 0o022; },\n"
+            "                    getuid() { return 0; }, getgid() { return 0; },\n"
+            "                    geteuid() { return 0; }, getegid() { return 0; },\n"
+            "                    getgroups() { return [0]; },\n"
+            "                    cwd() { return \'/\'; }, chdir() {},\n"
+            "                    env: {}, argv: [\'wasm\'],\n"
+            "                    exit(code) { console.warn(\'Go exit:\', code); },\n"
+            "                    stdout: { write(buf) { return buf.length; } },\n"
+            "                    stderr: { write(buf) { return buf.length; } },\n"
+            "                };\n"
+            "            }\n"
+            "            if (!globalThis.fs) {\n"
+            "                globalThis.fs = {\n"
+            "                    constants: { O_WRONLY: -1, O_RDWR: -1, O_CREAT: -1, O_TRUNC: -1, O_APPEND: -1, O_EXCL: -1 },\n"
+            "                    writeSync(fd, buf) { return 0; },\n"
+            "                    write(fd, buf, offset, length, position, callback) { callback(null, length); },\n"
+            "                    open(path, flags, mode, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    read(fd, buf, offset, length, position, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    close(fd, callback) { callback(null); },\n"
+            "                    fsync(fd, callback) { callback(null); },\n"
+            "                    fstat(fd, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    stat(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    lstat(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    mkdir(path, perm, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    unlink(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    rmdir(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    readdir(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    chmod(path, mode, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    fchmod(fd, mode, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    chown(path, uid, gid, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    fchown(fd, uid, gid, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    lchown(path, uid, gid, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    truncate(path, length, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    ftruncate(fd, length, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    utimes(path, atime, mtime, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    link(path, link, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    symlink(path, link, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    readlink(path, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                    rename(from, to, callback) { callback(new Error(\'not implemented\')); },\n"
+            "                };\n"
+            "            }\n"
+            "\n"
+            "            // Attempt Go WASM — will overwrite the JS fallback if successful\n"
+            "            const goWasmB64 = document.getElementById(\'go-wasm-b64\').textContent;\n"
+            "            const goWasmBytes = Uint8Array.from(atob(goWasmB64), c => c.charCodeAt(0));\n"
+            "            const go = new Go();\n"
+            "            const goResult = await WebAssembly.instantiate(goWasmBytes, go.importObject);\n"
+            "            go.run(goResult.instance);\n"
+            "            console.log(\'Go WASM document builder loaded (native)\');\n"
+            "            } catch (goErr) {\n"
+            "                console.warn(\'Go WASM failed, using JS fallback:\', goErr.message || goErr);\n"
+            "            }"
+        )
+    else:
+        go_init = (
+            "\n"
+            "            // Go WASM not available — using JavaScript fallback for document_builder\n"
+            "            console.warn(\'Go WASM not included — using JS fallback\');\n"
+            + indented_fallback
+        )
 
     html = html.replace(
         "            // Go WASM init happens here (injected by build script)",

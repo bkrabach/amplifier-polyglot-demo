@@ -278,6 +278,9 @@
             console.error('Boot error:', e);
         }
     }
+
+    // Start the boot sequence
+    boot().catch(e => console.error('Boot failed:', e));
     </script>
 </body>
 </html>
