@@ -16,6 +16,13 @@ interface ToolResult {
     error?: string;
 }
 
+// CORS proxy for browser cross-origin requests
+// allorigins.win proxies the request and adds CORS headers
+async function corsProxy(url: string): Promise<Response> {
+    const proxyUrl = "https://api.allorigins.win/raw?url=" + encodeURIComponent(url);
+    return fetch(proxyUrl);
+}
+
 async function tsWebResearch(input: WebResearchInput): Promise<ToolResult> {
     try {
         switch (input.action) {
@@ -38,7 +45,7 @@ async function searchDuckDuckGo(query: string): Promise<ToolResult> {
 
     // DuckDuckGo Instant Answer API (CORS-friendly)
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
-    const response = await fetch(url);
+    const response = await corsProxy(url);
     const data = await response.json();
 
     const results: any = {
@@ -61,7 +68,7 @@ async function searchDuckDuckGo(query: string): Promise<ToolResult> {
 async function fetchAndExtract(url: string, maxLength: number): Promise<ToolResult> {
     if (!url) return { success: false, error: "url is required" };
 
-    const response = await fetch(url);
+    const response = await corsProxy(url);
     const html = await response.text();
 
     // Use DOMParser to extract text content
@@ -95,7 +102,7 @@ async function fetchAndExtract(url: string, maxLength: number): Promise<ToolResu
 async function extractLinks(url: string, filter: string | null): Promise<ToolResult> {
     if (!url) return { success: false, error: "url is required" };
 
-    const response = await fetch(url);
+    const response = await corsProxy(url);
     const html = await response.text();
 
     const parser = new DOMParser();
